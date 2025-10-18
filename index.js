@@ -25,6 +25,15 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Middleware to parse JSON bodies
 app.use(express.json());
 
+// Serve static files (HTML, CSS, JS)
+app.use(express.static('.'));
+
+/**
+ * GET / - Serve the home page
+ */
+app.get('/', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'home.html'));
+});
 
 /**
  * Helper: convert background query param to sharp background object.

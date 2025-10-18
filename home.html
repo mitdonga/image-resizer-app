@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Resizer App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 600px;
+            margin: 2rem;
+        }
+        h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            font-weight: 300;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        .attribution {
+            color: #888;
+            font-size: 1rem;
+            margin-top: 2rem;
+            font-style: italic;
+        }
+        .heart {
+            color: #e74c3c;
+            font-size: 1.2em;
+        }
+        .api-info {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-top: 2rem;
+            text-align: left;
+        }
+        .api-info h3 {
+            color: #333;
+            margin-top: 0;
+            font-size: 1.1rem;
+        }
+        .api-info p {
+            color: #666;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+        code {
+            background: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to Image Resizer App</h1>
+        <p class="subtitle">
+            Resize your images with ease! Upload an image file or provide an image URL, 
+            and get a perfectly resized image delivered to your S3 bucket.
+        </p>
+        
+        <div class="api-info">
+            <h3>API Usage</h3>
+            <p><strong>Endpoint:</strong> <code>POST /resize</code></p>
+            <p><strong>Parameters:</strong></p>
+            <p>• <code>image</code> - Image file upload (multipart/form-data)</p>
+            <p>• <code>image_url</code> - Image URL (JSON body)</p>
+            <p>• <code>size</code> - Output size (default: 3000)</p>
+            <p>• <code>bg</code> - Background color (white, transparent, or #RRGGBB)</p>
+        </div>
+        
+        <p class="attribution">
+            Built with love <span class="heart">❤️</span> by Mit Donga
+        </p>
+    </div>
+</body>
+</html>
