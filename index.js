@@ -25,6 +25,28 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Middleware to parse JSON bodies
 app.use(express.json());
 
+// Bearer authentication middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ 
+      error: 'Access token required. Please provide Bearer token in Authorization header.',
+      success: false 
+    });
+  }
+
+  if (token !== process.env.AUTH_TOKEN) {
+    return res.status(403).json({ 
+      error: 'Invalid access token.',
+      success: false 
+    });
+  }
+
+  next();
+}
+
 // Serve static files (HTML, CSS, JS)
 app.use(express.static('.'));
 
@@ -111,7 +133,7 @@ async function downloadImageFromUrl(imageUrl) {
  * Response: JSON object with filename, S3 URL, and other metadata
  * Saves resized image to S3 only
  */
-app.post("/resize", upload.single("image"), async (req, res) => {
+app.post("/resize", authenticateToken, upload.single("image"), async (req, res) => {
   try {
     const imageUrl = req.body?.image_url;
     const hasFile = !!req.file;
