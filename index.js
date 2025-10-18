@@ -3,23 +3,28 @@ import express from "express";
 import multer from "multer";
 import sharp from "sharp";
 import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import dotenv from "dotenv";
+import fetch from "node-fetch";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Load environment variables
+dotenv.config();
 
-// Create images directory if it doesn't exist
-const imagesDir = path.join(__dirname, "images");
-if (!fs.existsSync(imagesDir)) {
-  fs.mkdirSync(imagesDir, { recursive: true });
-}
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Serve images from the images directory
-app.use("/images", express.static(imagesDir));
+// Middleware to parse JSON bodies
+app.use(express.json());
+
 
 /**
  * Helper: convert background query param to sharp background object.
@@ -40,24 +45,97 @@ function parseBackground(bgParam) {
   return { r: 255, g: 255, b: 255, alpha: 1 };
 }
 
+async function uploadToS3(buffer, filename, contentType) {
+  const folderPrefix = process.env.S3_FOLDER_PREFIX || "";
+  const key = `${folderPrefix}${filename}`;
+  
+  const command = new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET_NAME,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType
+  });
+
+  await s3Client.send(command);
+  
+  return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+}
+
+/**
+ * Helper: download image from URL and return buffer
+ */
+async function downloadImageFromUrl(imageUrl) {
+  try {
+    const response = await fetch(imageUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.startsWith('image/')) {
+      throw new Error('URL does not point to a valid image');
+    }
+    
+    const buffer = await response.buffer();
+    return {
+      buffer,
+      contentType,
+      originalname: path.basename(new URL(imageUrl).pathname) || 'downloaded_image'
+    };
+  } catch (error) {
+    throw new Error(`Error downloading image from URL: ${error.message}`);
+  }
+}
+
 /**
  * POST /resize
- * form-data:
- *   image: file
+ * Accepts either:
+ *   - form-data with 'image' field (file upload)
+ *   - JSON body with 'image_url' field (URL to download)
+ * Exactly one of these must be provided.
+ * 
  * query params (optional):
  *   size (default 3000) -- integer
  *   bg (default "white") -- "white", "transparent", or "#RRGGBB"
  *
- * Response: JSON object with filename, location, and other metadata
- * Saves resized image to /images/ directory
+ * Response: JSON object with filename, S3 URL, and other metadata
+ * Saves resized image to S3 only
  */
 app.post("/resize", upload.single("image"), async (req, res) => {
   try {
-    if (!req.file) {
+    const imageUrl = req.body?.image_url;
+    const hasFile = !!req.file;
+    const hasUrl = !!imageUrl;
+
+    // Validate that exactly one input method is provided
+    if (!hasFile && !hasUrl) {
       return res.status(400).json({ 
-        error: "Missing file field 'image'",
+        error: "Either 'image' file field or 'image_url' JSON field must be provided",
         success: false 
       });
+    }
+
+    if (hasFile && hasUrl) {
+      return res.status(400).json({ 
+        error: "Provide either 'image' file field OR 'image_url' JSON field, not both",
+        success: false 
+      });
+    }
+
+    let inputBuffer, originalname, mimetype;
+
+    if (hasFile) {
+      // Handle file upload
+      inputBuffer = req.file.buffer;
+      originalname = req.file.originalname;
+      mimetype = req.file.mimetype;
+    } else {
+      // Handle URL download
+      const downloadedData = await downloadImageFromUrl(imageUrl);
+      inputBuffer = downloadedData.buffer;
+      originalname = downloadedData.originalname;
+      mimetype = downloadedData.contentType;
     }
 
     const size = Math.max(1, parseInt(req.query.size || "3000", 10));
@@ -65,7 +143,6 @@ app.post("/resize", upload.single("image"), async (req, res) => {
     const background = parseBackground(bgParam);
 
     // read input buffer and metadata
-    const inputBuffer = req.file.buffer;
     const metadata = await sharp(inputBuffer).metadata();
 
     // choose output format:
@@ -76,7 +153,7 @@ app.post("/resize", upload.single("image"), async (req, res) => {
     else if (metadata.hasAlpha) outputFormat = "png";
     else {
       // keep jpeg if original was jpeg; else jpeg is fine
-      if ((req.file.mimetype || "").includes("png")) outputFormat = "png";
+      if ((mimetype || "").includes("png")) outputFormat = "png";
       else outputFormat = "jpeg";
     }
 
@@ -100,23 +177,25 @@ app.post("/resize", upload.single("image"), async (req, res) => {
     const outBuffer = await pipeline.toBuffer();
 
     // Generate unique filename with timestamp
-    const originalName = path.parse(req.file.originalname).name;
+    const originalName = path.parse(originalname).name;
+    // Replace special characters with underscores
+    const sanitizedName = originalName.replace(/[()[\]+\s\-\.]/g, '_');
     const timestamp = Date.now();
-    const filename = `${originalName}_resized_${timestamp}.${outputFormat}`;
-    const filePath = path.join(imagesDir, filename);
+    const filename = `${sanitizedName}_resized_${timestamp}.${outputFormat}`;
 
-    // Save file to images directory
-    fs.writeFileSync(filePath, outBuffer);
+    // Upload to S3
+    const contentType = outputFormat === "png" ? "image/png" : "image/jpeg";
+    const s3Url = await uploadToS3(outBuffer, filename, contentType);
 
-    // Return JSON response with location and filename
+    // Return JSON response with S3 URL and metadata
     res.json({
       success: true,
       filename: filename,
-      location: `/images/${filename}`,
-      absolutePath: filePath,
+      url: s3Url,
       size: `${size}x${size}`,
       format: outputFormat,
-      background: bgParam
+      background: bgParam,
+      source: hasFile ? "file" : "url"
     });
   } catch (err) {
     console.error(err);
@@ -130,5 +209,4 @@ app.post("/resize", upload.single("image"), async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Image resize server running at http://localhost:${PORT}`);
-  console.log(`POST /resize with form-data field 'image'`);
 });
