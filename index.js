@@ -21,6 +21,21 @@ const s3Client = new S3Client({
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
+const uploadMultiple = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+    files: 5 // Maximum 5 files
+  },
+  fileFilter: (req, file, cb) => {
+    // Check file type
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -55,6 +70,13 @@ app.use(express.static('.'));
  */
 app.get('/', (req, res) => {
   res.sendFile(path.join(process.cwd(), 'home.html'));
+});
+
+/**
+ * GET /multiple - Serve the multiple image resizer page
+ */
+app.get('/multiple', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'multiple.html'));
 });
 
 /**
@@ -228,6 +250,138 @@ app.post("/resize", authenticateToken, upload.single("image"), async (req, res) 
       background: bgParam,
       source: hasFile ? "file" : "url"
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ 
+      error: "Processing error: " + (err && err.message),
+      success: false 
+    });
+  }
+});
+
+/**
+ * POST /resize-multiple
+ * Accepts multiple image files (up to 5) via form-data
+ * 
+ * query params:
+ *   size (default 3000) -- integer
+ *   bg (default "white") -- "white", "transparent", or "#RRGGBB"
+ *
+ * Response: JSON object with array of processed images (base64 encoded)
+ * Does NOT save to S3 - returns images directly to client
+ */
+app.post("/resize-multiple", authenticateToken, uploadMultiple.array("images", 5), async (req, res) => {
+  try {
+    const files = req.files;
+    
+    // Validate that at least one file is provided
+    if (!files || files.length === 0) {
+      return res.status(400).json({ 
+        error: "At least one image file must be provided",
+        success: false 
+      });
+    }
+
+    // Validate file count
+    if (files.length > 5) {
+      return res.status(400).json({ 
+        error: "Maximum 5 images allowed per request",
+        success: false 
+      });
+    }
+
+    const size = Math.max(1, parseInt(req.query.size || "3000", 10));
+    const bgParam = req.query.bg || "white";
+    const background = parseBackground(bgParam);
+
+    // Process all images in parallel
+    const processImage = async (file, index) => {
+      try {
+        const inputBuffer = file.buffer;
+        const originalname = file.originalname;
+        const mimetype = file.mimetype;
+
+        // Read input buffer and metadata
+        const metadata = await sharp(inputBuffer).metadata();
+
+        // Choose output format
+        let outputFormat = "jpeg";
+        if (background.alpha === 0) outputFormat = "png";
+        else if (metadata.hasAlpha) outputFormat = "png";
+        else {
+          if ((mimetype || "").includes("png")) outputFormat = "png";
+          else outputFormat = "jpeg";
+        }
+
+        // Sharp pipeline: resize to bounding box size×size, keep aspect ratio, center, pad with background
+        const pipeline = sharp(inputBuffer)
+          .resize({
+            width: size,
+            height: size,
+            fit: "contain",
+            background: background,
+          });
+
+        // Set output format and options
+        if (outputFormat === "png") {
+          pipeline.png({ compressionLevel: 9 });
+        } else {
+          pipeline.jpeg({ quality: 90 });
+        }
+
+        const outBuffer = await pipeline.toBuffer();
+        
+        // Convert to base64
+        const base64 = outBuffer.toString('base64');
+        const dataUrl = `data:image/${outputFormat};base64,${base64}`;
+
+        // Generate filename
+        const originalName = path.parse(originalname).name;
+        const sanitizedName = originalName.replace(/[()[\]+\s\-\.]/g, '_');
+        const timestamp = Date.now();
+        const filename = `${sanitizedName}_resized_${timestamp}.${outputFormat}`;
+
+        return {
+          success: true,
+          filename: filename,
+          base64: dataUrl,
+          size: `${size}x${size}`,
+          format: outputFormat,
+          originalSize: `${metadata.width}x${metadata.height}`,
+          originalName: originalname,
+          index: index
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message,
+          originalName: file.originalname,
+          index: index
+        };
+      }
+    };
+
+    // Process all images in parallel
+    const results = await Promise.all(files.map((file, index) => processImage(file, index)));
+
+    // Separate successful and failed results
+    const successful = results.filter(result => result.success);
+    const failed = results.filter(result => !result.success);
+
+    // Return response
+    res.json({
+      success: true,
+      totalImages: files.length,
+      successfulCount: successful.length,
+      failedCount: failed.length,
+      images: successful,
+      errors: failed,
+      settings: {
+        size: `${size}x${size}`,
+        background: bgParam
+      }
+    });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ 

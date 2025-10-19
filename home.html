@@ -80,9 +80,12 @@
             and get a perfectly resized image delivered to your S3 bucket.
         </p>
         
+        <button onclick="window.location.href='/multiple'" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;">
+            Try Multiple Image Resizer
+        </button>
         <div class="api-info">
             <h3>API Usage</h3>
-            <p><strong>Endpoint:</strong> <code>POST /resize</code></p>
+            <p><strong>Single Image Endpoint:</strong> <code>POST /resize</code></p>
             <p><strong>Parameters:</strong></p>
             <p>• <code>image</code> - Image file upload (multipart/form-data)</p>
             <p>• <code>image_url</code> - Image URL (JSON body)</p>

@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiple Image Resizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 2rem;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 2px dashed #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section.dragover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .upload-text {
+            font-size: 1.2rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-subtext {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .control-group input, .control-group select {
+            padding: 0.75rem;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .control-group input:focus, .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .auth-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .auth-section label {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .auth-section input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .progress {
+            display: none;
+            margin: 1rem 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .results {
+            display: none;
+            margin-top: 2rem;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .results-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .results-stats {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .image-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+
+        .image-card:hover {
+            transform: translateY(-4px);
+        }
+
+        .image-preview {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            background: #f8f9fa;
+        }
+
+        .image-info {
+            padding: 1rem;
+        }
+
+        .image-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+            word-break: break-word;
+        }
+
+        .image-details {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .download-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            width: 100%;
+        }
+
+        .download-btn:hover {
+            background: #218838;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border: 1px solid #c3e6cb;
+        }
+
+        .file-list {
+            margin-top: 1rem;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            border: 1px solid #dee2e6;
+        }
+
+        .file-name {
+            font-size: 0.9rem;
+            color: #333;
+        }
+
+        .file-size {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .remove-file {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .images-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Multiple Image Resizer</h1>
+            <p>Upload up to 5 images and resize them all at once</p>
+        </div>
+
+        <div class="main-content">
+            <div class="auth-section">
+                <label for="authToken">Authentication Token:</label>
+                <input type="password" id="authToken" placeholder="Enter your Bearer token">
+            </div>
+
+            <div class="upload-section" id="uploadSection">
+                <div class="file-input-wrapper">
+                    <input type="file" id="fileInput" class="file-input" multiple accept="image/*">
+                    <label for="fileInput" class="file-input-label">
+                        <div class="upload-icon">📁</div>
+                        <div class="upload-text">Click to select images or drag & drop</div>
+                        <div class="upload-subtext">Maximum 5 images • JPG and PNG supported</div>
+                    </label>
+                </div>
+                <div class="file-list" id="fileList"></div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label for="size">Output Size (px):</label>
+                    <input type="number" id="size" value="3000" min="100" max="10000">
+                </div>
+                <div class="control-group">
+                    <label for="background">Background:</label>
+                    <select id="background">
+                        <option value="white">White</option>
+                        <option value="transparent">Transparent</option>
+                        <option value="#000000">Black</option>
+                        <option value="#f0f0f0">Light Gray</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn" id="resizeBtn" disabled>Resize Images</button>
+
+            <div class="progress" id="progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div style="text-align: center; margin-top: 0.5rem; color: #666;">Processing images...</div>
+            </div>
+
+            <div class="results" id="results">
+                <div class="results-header">
+                    <div class="results-title">Resized Images</div>
+                    <div class="results-stats" id="resultsStats"></div>
+                </div>
+                <div class="images-grid" id="imagesGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class MultipleImageResizer {
+            constructor() {
+                this.selectedFiles = [];
+                this.maxFiles = 5;
+                this.init();
+            }
+
+            init() {
+                this.fileInput = document.getElementById('fileInput');
+                this.fileList = document.getElementById('fileList');
+                this.uploadSection = document.getElementById('uploadSection');
+                this.resizeBtn = document.getElementById('resizeBtn');
+                this.progress = document.getElementById('progress');
+                this.progressFill = document.getElementById('progressFill');
+                this.results = document.getElementById('results');
+                this.resultsStats = document.getElementById('resultsStats');
+                this.imagesGrid = document.getElementById('imagesGrid');
+                this.authToken = document.getElementById('authToken');
+
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                this.setAuthTokenFromLocalStorage();
+
+                this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+                
+                // Drag and drop
+                this.uploadSection.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    this.uploadSection.classList.add('dragover');
+                });
+
+                this.uploadSection.addEventListener('dragleave', () => {
+                    this.uploadSection.classList.remove('dragover');
+                });
+
+                this.uploadSection.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    this.uploadSection.classList.remove('dragover');
+                    this.handleFileSelect({ target: { files: e.dataTransfer.files } });
+                });
+
+                this.resizeBtn.addEventListener('click', () => this.resizeImages());
+            }
+
+            handleFileSelect(event) {
+                const files = Array.from(event.target.files);
+                
+                // Filter valid image files
+                const validFiles = files.filter(file => {
+                    return file.type.startsWith('image/') && file.size <= 10 * 1024 * 1024; // 10MB limit
+                });
+
+                // Add to selected files (respecting max limit)
+                validFiles.forEach(file => {
+                    if (this.selectedFiles.length < this.maxFiles) {
+                        this.selectedFiles.push(file);
+                    }
+                });
+
+                this.updateFileList();
+                this.updateResizeButton();
+            }
+
+            updateFileList() {
+                this.fileList.innerHTML = '';
+                
+                this.selectedFiles.forEach((file, index) => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.innerHTML = `
+                        <div>
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-size">${this.formatFileSize(file.size)}</div>
+                        </div>
+                        <button class="remove-file" onclick="resizer.removeFile(${index})">Remove</button>
+                    `;
+                    this.fileList.appendChild(fileItem);
+                });
+            }
+
+            removeFile(index) {
+                this.selectedFiles.splice(index, 1);
+                this.updateFileList();
+                this.updateResizeButton();
+            }
+
+            updateResizeButton() {
+                this.resizeBtn.disabled = this.selectedFiles.length === 0 || !this.authToken.value.trim();
+            }
+
+            setAuthTokenFromLocalStorage() {
+                const authToken = window.localStorage.getItem('authToken');
+                if (authToken) this.authToken.value = authToken;
+            }
+
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            async resizeImages() {
+                if (this.selectedFiles.length === 0) return;
+
+                const size = document.getElementById('size').value;
+                const background = document.getElementById('background').value;
+                const token = this.authToken.value.trim();
+
+                if (!token) {
+                    this.showError('Please enter your authentication token');
+                    return;
+                }
+
+                this.showProgress();
+                this.hideResults();
+
+                try {
+                    const formData = new FormData();
+                    this.selectedFiles.forEach(file => {
+                        formData.append('images', file);
+                    });
+
+                    const url = `/resize-multiple?size=${size}&bg=${encodeURIComponent(background)}`;
+                    
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.showResults(result);
+                    } else {
+                        this.showError(result.error || 'Failed to resize images');
+                    }
+                } catch (error) {
+                    this.showError('Network error: ' + error.message);
+                } finally {
+                    this.hideProgress();
+                }
+            }
+
+            showProgress() {
+                this.progress.style.display = 'block';
+                this.resizeBtn.disabled = true;
+                
+                // Animate progress bar
+                let progress = 0;
+                const interval = setInterval(() => {
+                    progress += Math.random() * 15;
+                    if (progress > 90) progress = 90;
+                    this.progressFill.style.width = progress + '%';
+                }, 200);
+
+                // Store interval to clear later
+                this.progressInterval = interval;
+            }
+
+            hideProgress() {
+                this.progress.style.display = 'none';
+                this.resizeBtn.disabled = false;
+                if (this.progressInterval) {
+                    clearInterval(this.progressInterval);
+                }
+                this.progressFill.style.width = '0%';
+            }
+
+            showResults(result) {
+                this.resultsStats.textContent = `${result.successfulCount} of ${result.totalImages} images processed successfully`;
+                
+                this.imagesGrid.innerHTML = '';
+                
+                result.images.forEach(image => {
+                    const imageCard = document.createElement('div');
+                    imageCard.className = 'image-card';
+                    imageCard.innerHTML = `
+                        <img src="${image.base64}" alt="${image.filename}" class="image-preview">
+                        <div class="image-info">
+                            <div class="image-name">${image.filename}</div>
+                            <div class="image-details">
+                                Original: ${image.originalSize} → Resized: ${image.size}<br>
+                                Format: ${image.format.toUpperCase()}
+                            </div>
+                            <button class="download-btn" onclick="resizer.downloadImage('${image.base64}', '${image.filename}')">
+                                Download Image
+                            </button>
+                        </div>
+                    `;
+                    this.imagesGrid.appendChild(imageCard);
+                });
+
+                // Show errors if any
+                if (result.errors && result.errors.length > 0) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error-message';
+                    errorDiv.innerHTML = '<strong>Errors:</strong><br>' + 
+                        result.errors.map(err => `${err.originalName}: ${err.error}`).join('<br>');
+                    this.imagesGrid.appendChild(errorDiv);
+                }
+
+                this.results.style.display = 'block';
+            }
+
+            hideResults() {
+                this.results.style.display = 'none';
+            }
+
+            showError(message) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.textContent = message;
+                
+                // Remove existing error messages
+                const existingErrors = document.querySelectorAll('.error-message');
+                existingErrors.forEach(err => err.remove());
+                
+                this.results.appendChild(errorDiv);
+                this.results.style.display = 'block';
+            }
+
+            downloadImage(base64, filename) {
+                const link = document.createElement('a');
+                link.href = base64;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+
+        // Initialize the resizer
+        const resizer = new MultipleImageResizer();
+
+        // Update resize button state when auth token changes
+        document.getElementById('authToken').addEventListener('input', () => {
+            resizer.updateResizeButton();
+            window.localStorage.setItem('authToken', this.authToken.value);
+        });
+    </script>
+</body>
+</html>
