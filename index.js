@@ -152,8 +152,12 @@ async function downloadImageFromUrl(imageUrl) {
  *   size (default 3000) -- integer
  *   bg (default "white") -- "white", "transparent", or "#RRGGBB"
  *
- * Response: JSON object with filename, S3 URL, and other metadata
- * Saves resized image to S3 only
+ * body params (optional):
+ *   save_to_s3 (default false) -- boolean, if true saves to S3 and returns JSON, if false returns image file directly
+ *
+ * Response: 
+ *   - If save_to_s3=true: JSON object with filename, S3 URL, and other metadata
+ *   - If save_to_s3=false: Direct image file download
  */
 app.post("/resize", authenticateToken, upload.single("image"), async (req, res) => {
   try {
@@ -198,6 +202,9 @@ app.post("/resize", authenticateToken, upload.single("image"), async (req, res) 
     // read input buffer and metadata
     const metadata = await sharp(inputBuffer).metadata();
 
+    // Check if save_to_s3 attribute is provided
+    const saveToS3 = req.query?.save_to_s3 === 'true' || req.query?.save_to_s3 === true;
+
     // choose output format:
     // - If user asked for transparent background, output PNG (supports alpha)
     // - Otherwise: if input has alpha, keep PNG; else output JPEG for smaller size
@@ -236,20 +243,34 @@ app.post("/resize", authenticateToken, upload.single("image"), async (req, res) 
     const timestamp = Date.now();
     const filename = `${sanitizedName}_resized_${timestamp}.${outputFormat}`;
 
-    // Upload to S3
-    const contentType = outputFormat === "png" ? "image/png" : "image/jpeg";
-    const s3Url = await uploadToS3(outBuffer, filename, contentType);
+    if (saveToS3) {
+      // Upload to S3
+      const contentType = outputFormat === "png" ? "image/png" : "image/jpeg";
+      const s3Url = await uploadToS3(outBuffer, filename, contentType);
 
-    // Return JSON response with S3 URL and metadata
-    res.json({
-      success: true,
-      filename: filename,
-      url: s3Url,
-      size: `${size}x${size}`,
-      format: outputFormat,
-      background: bgParam,
-      source: hasFile ? "file" : "url"
-    });
+      // Return JSON response with S3 URL and metadata
+      res.json({
+        success: true,
+        filename: filename,
+        url: s3Url,
+        size: `${size}x${size}`,
+        format: outputFormat,
+        background: bgParam,
+        source: hasFile ? "file" : "url",
+        saved_to_s3: true
+      });
+    } else {
+      // Return the resized image file directly
+      const contentType = outputFormat === "png" ? "image/png" : "image/jpeg";
+      
+      res.set({
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': outBuffer.length
+      });
+      
+      res.send(outBuffer);
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ 
