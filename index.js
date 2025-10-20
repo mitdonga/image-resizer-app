@@ -509,7 +509,13 @@ app.post("/heif-to-png", authenticateToken, async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Image resize server running at http://localhost:${PORT}`);
-});
+// Export the app for serverless platforms (e.g., Vercel)
+export default app;
+
+// Start local server only when not running on Vercel
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Image resize server running at http://localhost:${PORT}`);
+  });
+}
