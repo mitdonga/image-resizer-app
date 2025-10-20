@@ -6,6 +6,7 @@ import path from "path";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
+import heicConvert from "heic-convert";
 
 // Load environment variables
 dotenv.config();
@@ -96,6 +97,27 @@ function parseBackground(bgParam) {
   }
   // fallback white
   return { r: 255, g: 255, b: 255, alpha: 1 };
+}
+
+/**
+ * Helper: download arbitrary file from URL and return buffer (no content-type checks)
+ */
+async function downloadFileBuffer(fileUrl) {
+  try {
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+    }
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const buffer = await response.buffer();
+    return {
+      buffer,
+      contentType,
+      originalname: path.basename(new URL(fileUrl).pathname) || 'downloaded_file'
+    };
+  } catch (error) {
+    throw new Error(`Error downloading file from URL: ${error.message}`);
+  }
 }
 
 async function uploadToS3(buffer, filename, contentType) {
@@ -408,6 +430,81 @@ app.post("/resize-multiple", authenticateToken, uploadMultiple.array("images", 5
     res.status(500).json({ 
       error: "Processing error: " + (err && err.message),
       success: false 
+    });
+  }
+});
+
+/**
+ * POST /heif-to-png
+ * Body (JSON): { image_url: string }
+ * - Downloads the file from URL (even if content-type is application/octet-stream)
+ * - Converts to PNG with no resizing or other transformations
+ * - Returns PNG as attachment
+ */
+app.post("/heif-to-png", authenticateToken, async (req, res) => {
+  try {
+    const imageUrl = req.body?.image_url;
+    if (!imageUrl) {
+      return res.status(400).json({
+        error: "'image_url' JSON field is required",
+        success: false
+      });
+    }
+
+    // Download file buffer without enforcing image content-type
+    const downloaded = await downloadFileBuffer(imageUrl);
+    const inputBuffer = downloaded.buffer;
+    const originalname = downloaded.originalname;
+
+    let outBuffer;
+    const heifSupported = sharp.format?.heif?.input === true;
+    if (heifSupported) {
+      try {
+        outBuffer = await sharp(inputBuffer).png({ compressionLevel: 9 }).toBuffer();
+      } catch (sharpErr) {
+        // If sharp fails due to unsupported codec or parsing, try fallback
+        if (String(sharpErr).includes('unsupported image format') || String(sharpErr).includes('heif')) {
+          // fall through to heic-convert below
+        } else {
+          throw sharpErr;
+        }
+      }
+    }
+
+    if (!outBuffer) {
+      // Fallback: heic-convert
+      try {
+        const converted = await heicConvert({
+          buffer: inputBuffer,
+          format: 'PNG',
+          quality: 1
+        });
+        outBuffer = Buffer.from(converted);
+      } catch (fallbackErr) {
+        return res.status(501).json({
+          error: `HEIF conversion not available or failed: ${fallbackErr && fallbackErr.message}`,
+          success: false
+        });
+      }
+    }
+
+    // Generate output filename
+    const originalName = path.parse(originalname).name;
+    const sanitizedName = originalName.replace(/[()[\]+\s\-\.]/g, '_');
+    const timestamp = Date.now();
+    const filename = `${sanitizedName}_converted_${timestamp}.png`;
+
+    res.set({
+      'Content-Type': 'image/png',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': outBuffer.length
+    });
+    res.send(outBuffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: "Conversion error: " + (err && err.message),
+      success: false
     });
   }
 });
